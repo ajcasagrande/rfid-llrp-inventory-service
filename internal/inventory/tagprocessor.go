@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
 	contract "github.com/edgexfoundry/go-mod-core-contracts/v2/models"
-	"strings"
 	"time"
 )
 
@@ -27,7 +26,7 @@ type processorConfig struct {
 	// debugLogEnabled is used to be able to only log things when Debug logging is enabled
 	// note: this should be something that is able to be determined via the logger.LoggingClient,
 	// however currently EdgeX does not support querying the log level
-	// see: https://github.com/edgexfoundry/go-mod-core-contracts/v2/issues/294
+	// see: https://github.com/edgexfoundry/go-mod-core-contracts/issues/294
 	debugLogEnabled bool
 }
 
@@ -43,7 +42,7 @@ func NewTagProcessor(lc logger.LoggingClient, cfg config.ServiceConfig, tags []S
 		lc:        lc,
 		inventory: make(map[string]*Tag),
 	}
-	tp.UpdateConfig(cfg)
+	tp.UpdateConfig(cfg.AppCustom)
 
 	for _, t := range tags {
 		tp.inventory[t.EPC] = t.asTagPtr()
@@ -52,18 +51,15 @@ func NewTagProcessor(lc logger.LoggingClient, cfg config.ServiceConfig, tags []S
 	return tp
 }
 
-func (tp *TagProcessor) UpdateConfig(cfg config.ServiceConfig) {
-	as := cfg.ApplicationSettings
-	profile := newMobilityProfile(as.MobilityProfileSlope, as.MobilityProfileThreshold, as.MobilityProfileHoldoffMillis)
-	aliases := cfg.Aliases
+func (tp *TagProcessor) UpdateConfig(ac config.AppCustomConfig) {
+	profile := newMobilityProfile(ac.MobilityProfileSlope, ac.MobilityProfileThreshold, ac.MobilityProfileHoldoffMillis)
+	aliases := ac.Aliases
 	delete(aliases, "")
 
-	logLevel := strings.ToUpper(cfg.Writable.LogLevel)
 	tp.config = processorConfig{
-		adjustLastReadOnByOrigin: as.AdjustLastReadOnByOrigin,
-		departedThresholdSeconds: as.DepartedThresholdSeconds,
-		ageOutHours:              as.AgeOutHours,
-		debugLogEnabled:          logLevel == contract.DebugLog || logLevel == contract.TraceLog,
+		adjustLastReadOnByOrigin: ac.AdjustLastReadOnByOrigin,
+		departedThresholdSeconds: ac.DepartedThresholdSeconds,
+		ageOutHours:              ac.AgeOutHours,
 		profile:                  profile,
 		aliases:                  aliases,
 	}

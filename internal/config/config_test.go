@@ -6,8 +6,8 @@
 package config
 
 import (
-	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/inventory"
 	"errors"
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
 	"math"
 	"reflect"
 	"strconv"
@@ -16,7 +16,7 @@ import (
 )
 
 func TestEmptyConfigDefaults(t *testing.T) {
-	conf, err := ParseServiceConfig(inventory.getTestingLogger(), map[string]string{})
+	conf, err := ParseServiceConfig(logger.NewMockClient(), map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected err: %+v", err.Error())
 	}
@@ -92,12 +92,12 @@ func TestParseServiceConfig(t *testing.T) {
 		{key: "MetadataServiceURL", val: "", exp: ""},
 	}
 
-	rt := reflect.TypeOf(ApplicationSettings{})
+	rt := reflect.TypeOf(ServiceConfig{})
 	for _, c := range cases {
 		c := c
 		t.Run(c.key+":"+c.val, func(tt *testing.T) {
 			cfgMap := map[string]string{c.key: c.val}
-			ccfg, err := ParseServiceConfig(inventory.getTestingLogger(), cfgMap)
+			cfg, err := ParseServiceConfig(logger.NewMockClient(), cfgMap)
 			if !errors.Is(err, c.err) {
 				tt.Fatalf("expected %v, but got %+v", c.err, err)
 			}
@@ -111,7 +111,7 @@ func TestParseServiceConfig(t *testing.T) {
 				tt.Fatalf("no field %q", c.key)
 			}
 
-			rv := reflect.ValueOf(ccfg.ApplicationSettings)
+			rv := reflect.ValueOf(cfg.AppCustom)
 			fv := rv.FieldByIndex(ft.Index)
 
 			if !fv.IsValid() || !fv.CanInterface() {
@@ -132,7 +132,7 @@ func TestParseServiceConfig(t *testing.T) {
 		if err := quick.Check(func(val string) bool {
 			conf, parseErr := ParseServiceConfig(nil, map[string]string{
 				"DeviceServiceName": val})
-			return parseErr == nil && conf.ApplicationSettings.DeviceServiceName == val
+			return parseErr == nil && conf.AppCustom.DeviceServiceName == val
 		}, nil); err != nil {
 			tt.Error(err)
 		}
@@ -147,7 +147,7 @@ func TestParseServiceConfig(t *testing.T) {
 			}
 			iStr := strconv.FormatUint(uint64(u), 10)
 			conf, parseErr := ParseServiceConfig(nil, map[string]string{"AgeOutHours": iStr})
-			return parseErr == nil && conf.ApplicationSettings.AgeOutHours == u
+			return parseErr == nil && conf.AppCustom.AgeOutHours == u
 		}, nil); err != nil {
 			t.Error(err)
 		}
@@ -168,7 +168,7 @@ func TestParseServiceConfig(t *testing.T) {
 					fmts[int(fmtByte)%len(fmts)], fmtByte, f, parseErr)
 			}
 			return parseErr == nil && math.Abs(
-				conf.ApplicationSettings.MobilityProfileThreshold-f) < 0.001
+				conf.AppCustom.MobilityProfileThreshold-f) < 0.001
 		}, nil); err != nil {
 			t.Error(err)
 		}

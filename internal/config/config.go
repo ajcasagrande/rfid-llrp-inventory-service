@@ -7,11 +7,9 @@ package config
 
 import (
 	"fmt"
-	"github.com/edgexfoundry/go-mod-bootstrap/v2/bootstrap/config"
 	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
 	"github.com/pkg/errors"
 	"strconv"
-	"time"
 )
 
 type ServiceConfig struct {
@@ -179,36 +177,15 @@ func ParseServiceConfig(lc logger.LoggingClient, configMap map[string]string) (S
 }
 
 
-// TODO: Update using your Custom configuration type.
 // UpdateFromRaw updates the service's full configuration from raw data received from
 // the Service Provider.
 func (c *ServiceConfig) UpdateFromRaw(rawConfig interface{}) bool {
 	configuration, ok := rawConfig.(*ServiceConfig)
 	if !ok {
-		return false //errors.New("unable to cast raw config to type 'ServiceConfig'")
-	}
-
-	newConfig, ok := rawConfig.(*config.ServiceConfig)
-	if !ok {
-		lc.Warn("Unable to decode configuration from consul.", "raw", fmt.Sprintf("%#v", rawConfig))
 		return false
 	}
-
-	if err := newconfig.AppCustom.Validate(); err != nil {
-		lc.Error("Invalid Consul configuration.", "error", err.Error())
+	if err := configuration.AppCustom.Validate(); err != nil {
 		return false
-	}
-
-	lc.Info("Configuration updated from consul.")
-	lc.Debug("New consul config.", "config", fmt.Sprintf("%+v", newConfig))
-	processor.UpdateConfig(*newConfig)
-
-	// check if we need to change the ticker interval
-	if departedCheckSeconds != newconfig.AppCustom.DepartedCheckIntervalSeconds {
-		aggregateDepartedTicker.Stop()
-		departedCheckSeconds = newconfig.AppCustom.DepartedCheckIntervalSeconds
-		aggregateDepartedTicker = time.NewTicker(time.Duration(departedCheckSeconds) * time.Second)
-		lc.Info(fmt.Sprintf("Changing aggregate departed check interval to %d seconds.", departedCheckSeconds))
 	}
 
 	*c = *configuration

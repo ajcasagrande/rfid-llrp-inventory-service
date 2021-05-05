@@ -18,12 +18,7 @@ const (
 )
 
 func getTestingLogger() logger.LoggingClient {
-	logLevel := "WARN"
-	if testing.Verbose() {
-		logLevel = "DEBUG"
-	}
-
-	return logger.NewClientStdOut("test", false, logLevel)
+	return logger.NewMockClient()
 }
 
 func TestBasicArrival(t *testing.T) {
@@ -236,7 +231,7 @@ func TestAgeOutThreshold(t *testing.T) {
 	}{
 		{
 			name:         "Basic age out",
-			lastSeen:     time.Now().Add(-1 * time.Duration(2*Serviceconfig.AppCustom.AgeOutHours) * time.Hour),
+			lastSeen:     time.Now().Add(-1 * time.Duration(2*ServiceConfig.AppCustom.AgeOutHours) * time.Hour),
 			state:        Departed,
 			shouldAgeOut: true,
 		},
@@ -249,7 +244,7 @@ func TestAgeOutThreshold(t *testing.T) {
 		{
 			name: "Departed but not aged out",
 			// 1 hour less than the ageout timeout
-			lastSeen:     time.Now().Add(-1 * time.Duration(Serviceconfig.AppCustom.AgeOutHours-1) * time.Hour),
+			lastSeen:     time.Now().Add(-1 * time.Duration(ServiceConfig.AppCustom.AgeOutHours-1) * time.Hour),
 			state:        Departed,
 			shouldAgeOut: false,
 		},

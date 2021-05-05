@@ -18,9 +18,6 @@ import (
 	"github.com/edgexfoundry/app-functions-sdk-go/v2/pkg"
 	"github.com/edgexfoundry/app-functions-sdk-go/v2/pkg/interfaces"
 	"github.com/edgexfoundry/app-functions-sdk-go/v2/pkg/transforms"
-	"github.com/edgexfoundry/go-mod-bootstrap/v2/bootstrap/flags"
-	"github.com/edgexfoundry/go-mod-configuration/v2/configuration"
-	"github.com/edgexfoundry/go-mod-configuration/v2/pkg/types"
 	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
 	"github.com/edgexfoundry/go-mod-core-contracts/v2/models"
 	"github.com/gorilla/mux"
@@ -33,7 +30,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -43,8 +39,6 @@ import (
 const (
 	serviceKey      = "rfid-llrp-inventory"
 	eventDeviceName = "rfid-llrp-inventory"
-
-	BaseConsulPath = "edgex/appservices/1.0/"
 
 	ResourceROAccessReport     = "ROAccessReport"
 	ResourceReaderNotification = "ReaderEventNotification"
@@ -71,6 +65,7 @@ type inventoryApp struct {
 	defaultGrp   *llrp.ReaderGroup
 	snapshotReqs chan snapshotDest
 	reports      chan reportData
+	processor    inventory.TagProcessor
 }
 
 type reportData struct {
@@ -132,9 +127,6 @@ func main() {
 	os.Exit(code)
 }
 
-
-
-// TODO: Update using your Custom configuration 'writeable' type or remove if not using ListenForCustomConfigChanges
 // ProcessConfigUpdates processes the updated configuration for the service's writable configuration.
 // At a minimum it must copy the updated configuration into the service's current configuration. Then it can
 // do any special processing for changes that require more.
@@ -152,6 +144,19 @@ func (app *inventoryApp) ProcessConfigUpdates(rawWritableConfig interface{}) {
 		app.lgr.Info("No changes detected")
 		return
 	}
+
+	app.lgr.Info("Configuration updated from consul.")
+	app.lgr.Debug("New consul config.", "config", fmt.Sprintf("%+v", updated))
+	app.processor.UpdateConfig(*updated)
+
+	// todo: needs to be passed via channel to taskLoop
+	// check if we need to change the ticker interval
+	//if departedCheckSeconds != newConfig.AppCustom.DepartedCheckIntervalSeconds {
+	//	aggregateDepartedTicker.Stop()
+	//	departedCheckSeconds = newConfig.AppCustom.DepartedCheckIntervalSeconds
+	//	aggregateDepartedTicker = time.NewTicker(time.Duration(departedCheckSeconds) * time.Second)
+	//	lc.Info(fmt.Sprintf("Changing aggregate departed check interval to %d seconds.", departedCheckSeconds))
+	//}
 }
 
 // CreateAndRunAppService wraps what would normally be in main() so that it can be unit tested
@@ -166,20 +171,33 @@ func (app *inventoryApp) CreateAndRunAppService(serviceKey string, newServiceFac
 	app.lgr = logWrap{app.service.LoggingClient()}
 	app.lgr.Info("Starting.")
 
-	appSettings := app.service.ApplicationSettings()
-	app.lgr.exitIf(appSettings == nil, "Missing application settings.")
+	//appSettings := app.service.ApplicationSettings()
+	//app.lgr.exitIf(appSettings == nil, "Missing application settings.")
 
+	// More advance custom structured configuration can be defined and loaded as in this example.
+	// For more details see https://docs.edgexfoundry.org/2.0/microservices/application/GeneralAppServiceConfig/#custom-configuration
+	app.serviceConfig = &config.ServiceConfig{}
+	if err := app.service.LoadCustomConfig(app.serviceConfig, "AppCustom"); err != nil {
+		app.lgr.Errorf("failed load custom configuration: %s", err.Error())
+		return -1
+	}
 
-	cfg, err := config.ParseServiceConfig(app.service.LoggingClient(), app.service.ApplicationSettings())
-	app.lgr.exitIf(err != nil && !errors.Is(err, config.ErrUnexpectedConfigItems), fmt.Sprintf("Config parse error: %v.", err))
-	app.serviceConfig = &cfg
+	// Optionally validate the custom configuration after it is loaded.
+	if err := app.serviceConfig.AppCustom.Validate(); err != nil {
+		app.lgr.Errorf("custom configuration failed validation: %s", err.Error())
+		return -1
+	}
 
-	metadataURI, err := url.Parse(strings.TrimSpace(cfg.AppCustom.MetadataServiceURL))
+	//cfg, err := config.ParseServiceConfig(app.service.LoggingClient(), app.service.ApplicationSettings())
+	//app.lgr.exitIf(err != nil && !errors.Is(err, config.ErrUnexpectedConfigItems), fmt.Sprintf("Config parse error: %v.", err))
+	//app.serviceConfig = &cfg
+
+	metadataURI, err := url.Parse(strings.TrimSpace(app.serviceConfig.AppCustom.MetadataServiceURL))
 	app.lgr.exitIfErr(err, "Invalid device service URL.")
 	app.lgr.exitIf(metadataURI.Scheme == "" || metadataURI.Host == "",
 		"Invalid metadata service URL.", lg{"endpoint", metadataURI.String()})
 
-	devServURI, err := url.Parse(strings.TrimSpace(cfg.AppCustom.DeviceServiceURL))
+	devServURI, err := url.Parse(strings.TrimSpace(app.serviceConfig.AppCustom.DeviceServiceURL))
 	app.lgr.exitIfErr(err, "Invalid device service URL.")
 	app.lgr.exitIf(devServURI.Scheme == "" || devServURI.Host == "",
 		"Invalid device service URL.", lg{"endpoint", devServURI.String()})
@@ -190,7 +208,7 @@ func (app *inventoryApp) CreateAndRunAppService(serviceKey string, newServiceFac
 		Host:   devServURI.Host,
 	}, http.DefaultClient)
 
-	dsName := cfg.AppCustom.DeviceServiceName
+	dsName := app.serviceConfig.AppCustom.DeviceServiceName
 	app.lgr.exitIf(dsName == "", "Missing device service name.")
 	metadataURI.Path = "/api/v1/device/servicename/" + dsName
 	deviceNames, err := llrp.GetDevices(metadataURI.String(), http.DefaultClient)
@@ -198,23 +216,6 @@ func (app *inventoryApp) CreateAndRunAppService(serviceKey string, newServiceFac
 	for _, name := range deviceNames {
 		app.lgr.exitIfErr(app.defaultGrp.AddReader(app.devService, name),
 			"Failed to setup device.", lg{"device", name})
-	}
-
-	// More advance custom structured configuration can be defined and loaded as in this example.
-	// For more details see https://docs.edgexfoundry.org/2.0/microservices/application/GeneralAppServiceConfig/#custom-configuration
-	// TODO: Change to use your service's custom configuration struct
-	//       or remove if not using custom configuration capability
-	app.serviceConfig = &config.ServiceConfig{}
-	if err := app.service.LoadCustomConfig(app.serviceConfig, "AppCustom"); err != nil {
-		app.lgr.Errorf("failed load custom configuration: %s", err.Error())
-		return -1
-	}
-
-	// Optionally validate the custom configuration after it is loaded.
-	// TODO: remove if you don't have custom configuration or don't need to validate it
-	if err := app.serviceConfig.AppCustom.Validate(); err != nil {
-		app.lgr.Errorf("custom configuration failed validation: %s", err.Error())
-		return -1
 	}
 
 	app.addRoutes()
@@ -238,7 +239,7 @@ func (app *inventoryApp) CreateAndRunAppService(serviceKey string, newServiceFac
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		app.taskLoop(ctx, cfg, app.lgr)
+		app.taskLoop(ctx, *app.serviceConfig, app.lgr)
 		app.lgr.Info("Task loop has exited.")
 	}()
 
@@ -250,7 +251,7 @@ func (app *inventoryApp) CreateAndRunAppService(serviceKey string, newServiceFac
 	// but instead provides our code a way to cleanup and persist the data safely
 	// when the process is exiting.
 	//
-	// see: https://github.com/edgexfoundry/app-functions-sdk-go/v2/issues/500
+	// see: https://github.com/edgexfoundry/app-functions-sdk-go/issues/500
 	go func() {
 		signals := make(chan os.Signal)
 		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
@@ -267,7 +268,6 @@ func (app *inventoryApp) CreateAndRunAppService(serviceKey string, newServiceFac
 	// let task loop complete
 	wg.Wait()
 	app.lgr.Info("Exiting.")
-
 
 	// TODO: Replace below functions with built in and/or your custom functions for your use case.
 	//       See https://docs.edgexfoundry.org/2.0/microservices/application/BuiltIn/ for list of built-in functions
@@ -409,37 +409,6 @@ func (app *inventoryApp) addRoutes() {
 	}
 }
 
-// getConfigClient returns a configuration client based on the command line args,
-// or a default one if those lack a config provider URL.
-// Ideally, a future version of the EdgeX SDKs will give us something like this
-// without parsing the args again, but for now, this will do.
-func getConfigClient() (configuration.Client, error) {
-	sdkFlags := flags.New()
-	sdkFlags.Parse(os.Args[1:])
-	cpUrl, err := url.Parse(sdkFlags.ConfigProviderUrl())
-	if err != nil {
-		return nil, err
-	}
-
-	cpPort := 8500
-	port := cpUrl.Port()
-	if port != "" {
-		cpPort, err = strconv.Atoi(port)
-		if err != nil {
-			return nil, errors.Wrap(err, "bad config port")
-		}
-	}
-
-	configClient, err := configuration.NewConfigurationClient(types.ServiceConfig{
-		Host:     cpUrl.Hostname(),
-		Port:     cpPort,
-		BasePath: BaseConsulPath,
-		Type:     cpUrl.Scheme,
-	})
-
-	return configClient, errors.Wrap(err, "failed to get config client")
-}
-
 // processEdgeXEvent is used as the sole member of our pipeline.
 // It's essentially our entrypoint for EdgeX event processing.
 //
@@ -458,7 +427,7 @@ func getConfigClient() (configuration.Client, error) {
 //
 // Once we've reestablished these basic requirements,
 // this dispatches the content to the appropriate type-safe functions.
-func (app *inventoryApp) processEdgeXEvent(ctx interfaces.AppFunctionContext, data interface{}) (bool, interface{}) {
+func (app *inventoryApp) processEdgeXEvent(_ interfaces.AppFunctionContext, data interface{}) (bool, interface{}) {
 	event, ok := data.(models.Event)
 	if !ok {
 		// You know what's cool in compiled languages? Type safety.
@@ -584,7 +553,7 @@ func (app *inventoryApp) taskLoop(ctx context.Context, cfg config.ServiceConfig,
 		}
 	}
 
-	processor := inventory.NewTagProcessor(lc, cfg, snapshot)
+	app.processor = *inventory.NewTagProcessor(lc, cfg, snapshot)
 	if len(snapshot) > 0 {
 		lc.Info(fmt.Sprintf("Restored %d tags from cache.", len(snapshot)))
 	}
@@ -624,7 +593,7 @@ func (app *inventoryApp) taskLoop(ctx context.Context, cfg config.ServiceConfig,
 				lc.Error("Tag Report for unknown device.", "device", rd.info.DeviceName)
 			}
 
-			events, updatedSnapshot := processor.ProcessReport(rd.report, rd.info)
+			events, updatedSnapshot := app.processor.ProcessReport(rd.report, rd.info)
 			if updatedSnapshot != nil {
 				snapshot = updatedSnapshot // always update the snapshot if available
 			}
@@ -640,7 +609,7 @@ func (app *inventoryApp) taskLoop(ctx context.Context, cfg config.ServiceConfig,
 			}
 			lc.Debug("Running AggregateDeparted.", "time", fmt.Sprintf("%v", t))
 
-			if events, updatedSnapshot := processor.AggregateDeparted(); len(events) > 0 {
+			if events, updatedSnapshot := app.processor.AggregateDeparted(); len(events) > 0 {
 				if updatedSnapshot != nil { // should always be true if there are events
 					snapshot = updatedSnapshot
 					persistSnapshot(lc, snapshot)
@@ -650,7 +619,7 @@ func (app *inventoryApp) taskLoop(ctx context.Context, cfg config.ServiceConfig,
 
 		case t := <-ageoutTicker.C:
 			lc.Debug("Running AgeOut.", "time", fmt.Sprintf("%v", t))
-			if _, updatedSnapshot := processor.AgeOut(); updatedSnapshot != nil {
+			if _, updatedSnapshot := app.processor.AgeOut(); updatedSnapshot != nil {
 				snapshot = updatedSnapshot
 				persistSnapshot(lc, snapshot)
 			}
@@ -710,10 +679,8 @@ func (app *inventoryApp) pushEventsToCoreData(ctx context.Context, events []inve
 		}
 
 		resourceName := ResourceInventoryEvent + string(event.OfType())
-		app.lgr.Info()
-		app.service.LoggingClient.Info("Sending Inventory Event.",
+		app.service.LoggingClient().Info("Sending Inventory Event.",
 			"type", resourceName, "payload", string(payload))
-
 		readings = append(readings, models.Reading{
 			Value:  string(payload),
 			Origin: now,
