@@ -3,9 +3,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package inventory
+package config
 
 import (
+	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/inventory"
 	"errors"
 	"math"
 	"reflect"
@@ -15,19 +16,19 @@ import (
 )
 
 func TestEmptyConfigDefaults(t *testing.T) {
-	conf, err := ParseConsulConfig(getTestingLogger(), map[string]string{})
+	conf, err := ParseServiceConfig(inventory.getTestingLogger(), map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected err: %+v", err.Error())
 	}
 
-	expected := NewConsulConfig()
+	expected := NewServiceConfig()
 	if !reflect.DeepEqual(expected, conf) {
 		t.Errorf("expected defaults, but got %+v; defaults: %+v",
 			expected, conf)
 	}
 }
 
-func TestParseConsulConfig(t *testing.T) {
+func TestParseServiceConfig(t *testing.T) {
 	type testCase struct {
 		key, val string
 		err      error
@@ -96,7 +97,7 @@ func TestParseConsulConfig(t *testing.T) {
 		c := c
 		t.Run(c.key+":"+c.val, func(tt *testing.T) {
 			cfgMap := map[string]string{c.key: c.val}
-			ccfg, err := ParseConsulConfig(getTestingLogger(), cfgMap)
+			ccfg, err := ParseServiceConfig(inventory.getTestingLogger(), cfgMap)
 			if !errors.Is(err, c.err) {
 				tt.Fatalf("expected %v, but got %+v", c.err, err)
 			}
@@ -129,7 +130,7 @@ func TestParseConsulConfig(t *testing.T) {
 	t.Run("quickCheckStr", func(tt *testing.T) {
 		tt.Parallel()
 		if err := quick.Check(func(val string) bool {
-			conf, parseErr := ParseConsulConfig(nil, map[string]string{
+			conf, parseErr := ParseServiceConfig(nil, map[string]string{
 				"DeviceServiceName": val})
 			return parseErr == nil && conf.ApplicationSettings.DeviceServiceName == val
 		}, nil); err != nil {
@@ -145,7 +146,7 @@ func TestParseConsulConfig(t *testing.T) {
 				return true
 			}
 			iStr := strconv.FormatUint(uint64(u), 10)
-			conf, parseErr := ParseConsulConfig(nil, map[string]string{"AgeOutHours": iStr})
+			conf, parseErr := ParseServiceConfig(nil, map[string]string{"AgeOutHours": iStr})
 			return parseErr == nil && conf.ApplicationSettings.AgeOutHours == u
 		}, nil); err != nil {
 			t.Error(err)
@@ -160,7 +161,7 @@ func TestParseConsulConfig(t *testing.T) {
 		fmts := [...]byte{'e', 'E', 'f', 'g', 'G', 'x', 'X'}
 		if err := quick.Check(func(f float64, fmtByte byte) bool {
 			iStr := strconv.FormatFloat(f, fmts[int(fmtByte)%len(fmts)], -1, 64)
-			conf, parseErr := ParseConsulConfig(nil, map[string]string{
+			conf, parseErr := ParseServiceConfig(nil, map[string]string{
 				"MobilityProfileThreshold": iStr})
 			if parseErr != nil {
 				tt.Logf("fmt: %c (%d), f: %v, err: %+v",

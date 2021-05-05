@@ -6,11 +6,12 @@
 package inventory
 
 import (
+	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/config"
 	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/llrp"
 	"encoding/hex"
 	"fmt"
-	"github.com/edgexfoundry/go-mod-core-contracts/clients/logger"
-	contract "github.com/edgexfoundry/go-mod-core-contracts/models"
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
+	contract "github.com/edgexfoundry/go-mod-core-contracts/v2/models"
 	"strings"
 	"time"
 )
@@ -26,7 +27,7 @@ type processorConfig struct {
 	// debugLogEnabled is used to be able to only log things when Debug logging is enabled
 	// note: this should be something that is able to be determined via the logger.LoggingClient,
 	// however currently EdgeX does not support querying the log level
-	// see: https://github.com/edgexfoundry/go-mod-core-contracts/issues/294
+	// see: https://github.com/edgexfoundry/go-mod-core-contracts/v2/issues/294
 	debugLogEnabled bool
 }
 
@@ -37,7 +38,7 @@ type TagProcessor struct {
 }
 
 // NewTagProcessor creates a tag processor and pre-loads its mobility profile
-func NewTagProcessor(lc logger.LoggingClient, cfg ConsulConfig, tags []StaticTag) *TagProcessor {
+func NewTagProcessor(lc logger.LoggingClient, cfg config.ServiceConfig, tags []StaticTag) *TagProcessor {
 	tp := &TagProcessor{
 		lc:        lc,
 		inventory: make(map[string]*Tag),
@@ -51,7 +52,7 @@ func NewTagProcessor(lc logger.LoggingClient, cfg ConsulConfig, tags []StaticTag
 	return tp
 }
 
-func (tp *TagProcessor) UpdateConfig(cfg ConsulConfig) {
+func (tp *TagProcessor) UpdateConfig(cfg config.ServiceConfig) {
 	as := cfg.ApplicationSettings
 	profile := newMobilityProfile(as.MobilityProfileSlope, as.MobilityProfileThreshold, as.MobilityProfileHoldoffMillis)
 	aliases := cfg.Aliases

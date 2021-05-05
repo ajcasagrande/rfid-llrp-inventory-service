@@ -6,6 +6,7 @@
 package inventory
 
 import (
+	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/config"
 	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/llrp"
 	"encoding/hex"
 	"errors"
@@ -41,7 +42,7 @@ type testDataset struct {
 	epcs []string
 }
 
-func newTestDataset(cfg ConsulConfig, tagCount int) *testDataset {
+func newTestDataset(cfg config.ServiceConfig, tagCount int) *testDataset {
 	lc := getTestingLogger()
 	ds := testDataset{
 		tp:   NewTagProcessor(lc, cfg, nil),

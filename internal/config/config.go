@@ -3,16 +3,24 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package inventory
+package config
 
 import (
 	"fmt"
-	"github.com/edgexfoundry/go-mod-core-contracts/clients/logger"
+	"github.com/edgexfoundry/go-mod-bootstrap/v2/bootstrap/config"
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
 	"github.com/pkg/errors"
 	"strconv"
+	"time"
 )
 
-type ApplicationSettings struct {
+type ServiceConfig struct {
+	AppCustom AppCustomConfig
+}
+
+// AppCustomConfig is service's custom structured configuration that is specified in the service's
+// configuration.toml file and Configuration Provider (aka Consul), if enabled.
+type AppCustomConfig struct {
 	MobilityProfileThreshold     float64
 	MobilityProfileHoldoffMillis float64
 	MobilityProfileSlope         float64
@@ -26,16 +34,8 @@ type ApplicationSettings struct {
 	AgeOutHours                  uint
 
 	AdjustLastReadOnByOrigin bool
-}
 
-type WriteableConfig struct {
-	LogLevel string
-}
-
-type ConsulConfig struct {
-	Writable            WriteableConfig
-	ApplicationSettings ApplicationSettings
-	Aliases             map[string]string
+	Aliases map[string]string
 }
 
 var (
@@ -49,14 +49,10 @@ var (
 	ErrOutOfRange = errors.New("config value out of range")
 )
 
-// NewConsulConfig returns a new ConsulConfig instance with default values.
-func NewConsulConfig() ConsulConfig {
-	return ConsulConfig{
-		Aliases: map[string]string{},
-		Writable: WriteableConfig{
-			LogLevel: "INFO",
-		},
-		ApplicationSettings: ApplicationSettings{
+// NewServiceConfig returns a new ServiceConfig instance with default values.
+func NewServiceConfig() ServiceConfig {
+	return ServiceConfig{
+		AppCustom: AppCustomConfig{
 			MobilityProfileThreshold:     6,
 			MobilityProfileHoldoffMillis: 500,
 			MobilityProfileSlope:         -0.008,
@@ -67,29 +63,30 @@ func NewConsulConfig() ConsulConfig {
 			DepartedCheckIntervalSeconds: 30,
 			AgeOutHours:                  336,
 			AdjustLastReadOnByOrigin:     true,
+			Aliases: map[string]string{},
 		},
 	}
 }
 
 // Validate returns nil if the ApplicationSettings are valid,
 // or the first validation error it encounters.
-func (as ApplicationSettings) Validate() error {
-	if as.DepartedThresholdSeconds == 0 {
+func (ac AppCustomConfig) Validate() error {
+	if ac.DepartedThresholdSeconds == 0 {
 		return errors.Wrap(ErrOutOfRange, "DepartedThresholdSeconds must be >0")
 	}
 
-	if as.DepartedCheckIntervalSeconds == 0 {
+	if ac.DepartedCheckIntervalSeconds == 0 {
 		return errors.Wrap(ErrOutOfRange, "DepartedCheckIntervalSeconds must be >0")
 	}
 
-	if as.AgeOutHours == 0 {
+	if ac.AgeOutHours == 0 {
 		return errors.Wrap(ErrOutOfRange, "AgeOutHours must be >0")
 	}
 
 	return nil
 }
 
-// ParseConsulConfig returns a new ConsulConfig
+// ParseServiceConfig returns a new ServiceConfig
 // with settings parsed from the given map,
 // merged with default settings for missing value.
 //
@@ -99,9 +96,9 @@ func (as ApplicationSettings) Validate() error {
 //
 // If the map is missing a non-required key,
 // it logs an INFO message unless the given logging client is nil.
-func ParseConsulConfig(lc logger.LoggingClient, configMap map[string]string) (ConsulConfig, error) {
-	cfg := NewConsulConfig()
-	settings := &cfg.ApplicationSettings
+func ParseServiceConfig(lc logger.LoggingClient, configMap map[string]string) (ServiceConfig, error) {
+	cfg := NewServiceConfig()
+	settings := &cfg.AppCustom
 
 	type confItem struct {
 		target   interface{} // pointer to the variable to set
@@ -179,4 +176,42 @@ func ParseConsulConfig(lc logger.LoggingClient, configMap map[string]string) (Co
 	}
 
 	return cfg, nil
+}
+
+
+// TODO: Update using your Custom configuration type.
+// UpdateFromRaw updates the service's full configuration from raw data received from
+// the Service Provider.
+func (c *ServiceConfig) UpdateFromRaw(rawConfig interface{}) bool {
+	configuration, ok := rawConfig.(*ServiceConfig)
+	if !ok {
+		return false //errors.New("unable to cast raw config to type 'ServiceConfig'")
+	}
+
+	newConfig, ok := rawConfig.(*config.ServiceConfig)
+	if !ok {
+		lc.Warn("Unable to decode configuration from consul.", "raw", fmt.Sprintf("%#v", rawConfig))
+		return false
+	}
+
+	if err := newconfig.AppCustom.Validate(); err != nil {
+		lc.Error("Invalid Consul configuration.", "error", err.Error())
+		return false
+	}
+
+	lc.Info("Configuration updated from consul.")
+	lc.Debug("New consul config.", "config", fmt.Sprintf("%+v", newConfig))
+	processor.UpdateConfig(*newConfig)
+
+	// check if we need to change the ticker interval
+	if departedCheckSeconds != newconfig.AppCustom.DepartedCheckIntervalSeconds {
+		aggregateDepartedTicker.Stop()
+		departedCheckSeconds = newconfig.AppCustom.DepartedCheckIntervalSeconds
+		aggregateDepartedTicker = time.NewTicker(time.Duration(departedCheckSeconds) * time.Second)
+		lc.Info(fmt.Sprintf("Changing aggregate departed check interval to %d seconds.", departedCheckSeconds))
+	}
+
+	*c = *configuration
+
+	return true
 }
