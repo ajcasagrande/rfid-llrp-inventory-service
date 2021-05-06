@@ -16,8 +16,8 @@ type ServiceConfig struct {
 	AppCustom AppCustomConfig
 }
 
-// AppCustomConfig is service's custom structured configuration that is specified in the service's
-// configuration.toml file and Configuration Provider (aka Consul), if enabled.
+type ReaderAlias map[string]string
+
 type AppCustomConfig struct {
 	MobilityProfileThreshold     float64
 	MobilityProfileHoldoffMillis float64
@@ -33,7 +33,7 @@ type AppCustomConfig struct {
 
 	AdjustLastReadOnByOrigin bool
 
-	Aliases map[string]string
+	Aliases map[string]ReaderAlias
 }
 
 var (
@@ -61,7 +61,7 @@ func NewServiceConfig() ServiceConfig {
 			DepartedCheckIntervalSeconds: 30,
 			AgeOutHours:                  336,
 			AdjustLastReadOnByOrigin:     true,
-			Aliases: map[string]string{},
+			Aliases: map[string]ReaderAlias{},
 		},
 	}
 }

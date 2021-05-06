@@ -17,49 +17,38 @@ Host = 'localhost'
 Port = 8500
 Type = 'consul'
 
-[Logging]
-EnableRemote = false
-File = ''
-
 # Database is require when Store and Forward is enabled
 # SecretStore is required when Store and Forward is enabled and running with security
 # so Database credentials can be pulled from Vault.
 
 [Clients]
-  [Clients.CoreData]
-  Protocol = 'http'
-  Host = 'localhost'
-  Port = 48080
+    [Clients.edgex-core-data]
+    Protocol = 'http'
+    Host = 'localhost'
+    Port = 48080
 
-[MessageBus]
-Type = 'zero'
-    [MessageBus.PublishHost]
-        Host = '*'
-        Port = 5564
-        Protocol = 'tcp'
-    [MessageBus.SubscribeHost]
+[Trigger]
+Type="edgex-messagebus"
+SubscribeTopics="events, edgex/events"
+    [Trigger.EdgexMessageBus]
+    Type = 'zero'
+        [Trigger.EdgexMessageBus.SubscribeHost]
         Host = 'localhost'
         Port = 5563
         Protocol = 'tcp'
 
-# Choose either an HTTP trigger or MessageBus trigger (aka Binding)
-
-#[Binding]
-#Type="http"
-
-[Binding]
-Type="messagebus"
-SubscribeTopic="events"
-PublishTopic="events"
-
 [ApplicationSettings]
+
+[AppCustom]
 DeviceServiceName = "edgex-device-rfid-llrp"
 DeviceServiceURL = "http://localhost:51992/"
 MetadataServiceURL = "http://localhost:48081/"
-AdjustLastReadOnByOrigin = "true"
-DepartedThresholdSeconds = "600"
-DepartedCheckIntervalSeconds = "30"
-AgeOutHours = "336"
-MobilityProfileThreshold = "6"
-MobilityProfileHoldoffMillis = "500"
-MobilityProfileSlope = "-0.008"
+AdjustLastReadOnByOrigin = true
+DepartedThresholdSeconds = 600
+DepartedCheckIntervalSeconds = 30
+AgeOutHours = 336
+MobilityProfileThreshold = 6.0
+MobilityProfileHoldoffMillis = 500.0
+MobilityProfileSlope = -0.008
+Aliases = { SpeedwayR-10-EF-20 = {"1" = "cccBackStock"} }
+

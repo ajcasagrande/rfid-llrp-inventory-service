@@ -61,7 +61,7 @@ func (tp *TagProcessor) UpdateConfig(ac config.AppCustomConfig) {
 		departedThresholdSeconds: ac.DepartedThresholdSeconds,
 		ageOutHours:              ac.AgeOutHours,
 		profile:                  profile,
-		aliases:                  aliases,
+		//aliases:                  aliases,
 	}
 }
 

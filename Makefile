@@ -40,4 +40,4 @@ docker:
 			.
 
 run: build
-	./$(MICROSERVICE) -cp=consul://localhost:8500 -confdir=res
+	EDGEX_SECURITY_SECRET_STORE=false ./$(MICROSERVICE) -cp=consul.http://localhost:8500 -confdir=res
