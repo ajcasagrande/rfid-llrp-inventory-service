@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2020 Intel Corporation
+// Copyright (C) 2020, 2021 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,6 @@ import (
 	"context"
 	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/inventory"
 	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/llrp"
-	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/logutil"
 	"encoding/json"
 	"fmt"
 	"github.com/edgexfoundry/app-functions-sdk-go/appcontext"
@@ -20,7 +19,6 @@ import (
 	"github.com/edgexfoundry/go-mod-configuration/pkg/types"
 	"github.com/edgexfoundry/go-mod-core-contracts/clients/logger"
 	"github.com/edgexfoundry/go-mod-core-contracts/models"
-	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
@@ -37,18 +35,18 @@ import (
 )
 
 const (
-	serviceKey      = "rfid-llrp-inventory"
 	eventDeviceName = "rfid-llrp-inventory"
-
-	baseConsulPath = "edgex/appservices/1.0/"
 
 	resourceROAccessReport     = "ROAccessReport"
 	resourceReaderNotification = "ReaderEventNotification"
 	resourceInventoryEvent     = "InventoryEvent"
 
-	maxBodyBytes        = 100 * 1024
 	coreDataPostTimeout = 3 * time.Minute
 	eventChSz           = 100
+)
+
+const (
+	serviceKey = "rfid-llrp-inventory"
 
 	cacheFolder  = "cache"
 	tagCacheFile = "tags.json"
@@ -56,14 +54,16 @@ const (
 	filePerm     = 0644
 )
 
-type inventoryApp struct {
+type InventoryApp struct {
 	edgexSdk     *appsdk.AppFunctionsSDK
-	lgr          logutil.LogWrap
+	lc           logger.LoggingClient
 	devMu        sync.RWMutex
 	devService   llrp.DSClient
 	defaultGrp   *llrp.ReaderGroup
 	snapshotReqs chan snapshotDest
 	reports      chan reportData
+	configClient configuration.Client
+	config       inventory.ConsulConfig
 }
 
 type reportData struct {
@@ -76,204 +76,84 @@ type snapshotDest struct {
 	result chan error
 }
 
-func main() {
+func NewInventoryApp() *InventoryApp {
+	return &InventoryApp{
+		snapshotReqs: make(chan snapshotDest),
+		reports:      make(chan reportData),
+	}
+}
+
+func (app *InventoryApp) Initialize() (err error) {
 	edgexSdk := &appsdk.AppFunctionsSDK{ServiceKey: serviceKey}
 	if err := edgexSdk.Initialize(); err != nil {
 		fmt.Printf("SDK initialization failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	lgr := logutil.LogWrap{LoggingClient: edgexSdk.LoggingClient}
-	lgr.Info("Starting.")
+	app.lc = app.edgexSdk.LoggingClient
+	app.lc.Info("Starting.")
 
 	appSettings := edgexSdk.ApplicationSettings()
-	lgr.ExitIf(appSettings == nil, "Missing application settings.")
-	cc, err := getConfigClient()
-	lgr.ExitIfErr(err, "Failed to create config client.")
+	if appSettings == nil {
+		return errors.New("missing application settings")
+	}
+	if app.configClient, err = getConfigClient(); err != nil {
+		return errors.Wrap(err, "Failed to create config client.")
+	}
 
-	config, err := inventory.ParseConsulConfig(edgexSdk.LoggingClient, edgexSdk.ApplicationSettings())
+	app.config, err = inventory.ParseConsulConfig(app.edgexSdk.LoggingClient, app.edgexSdk.ApplicationSettings())
 	if errors.Is(err, inventory.ErrUnexpectedConfigItems) {
 		// warn on unexpected config items, but do not exit
-		lgr.Warn(err.Error())
+		app.lc.Warn(err.Error())
 		err = nil
+	} else if err != nil {
+		return errors.Wrap(err, "config parse error")
 	}
-	lgr.ExitIf(err != nil, fmt.Sprintf("Config parse error: %v.", err))
 
-	metadataURI, err := url.Parse(strings.TrimSpace(config.ApplicationSettings.MetadataServiceURL))
-	lgr.ExitIfErr(err, "Invalid metadata service URL.")
-	lgr.ExitIf(metadataURI.Scheme == "" || metadataURI.Host == "",
-		"Invalid metadata service URL.", logutil.KeyValue{Key: "endpoint", Val: metadataURI.String()})
+	metadataURI, err := url.Parse(strings.TrimSpace(app.config.ApplicationSettings.MetadataServiceURL))
+	if err != nil {
+		return errors.Wrap(err, "invalid metadata service URL")
+	}
+	if metadataURI.Scheme == "" || metadataURI.Host == "" {
+		return fmt.Errorf("invalid metadata service URL, endpoint=%s", metadataURI.String())
+	}
 
-	devServURI, err := url.Parse(strings.TrimSpace(config.ApplicationSettings.DeviceServiceURL))
-	lgr.ExitIfErr(err, "Invalid device service URL.")
-	lgr.ExitIf(devServURI.Scheme == "" || devServURI.Host == "",
-		"Invalid device service URL.", logutil.KeyValue{Key: "endpoint", Val: devServURI.String()})
+	devServURI, err := url.Parse(strings.TrimSpace(app.config.ApplicationSettings.DeviceServiceURL))
+	if err != nil {
+		return errors.Wrap(err, "invalid device service URL")
+	}
+	if devServURI.Scheme == "" || devServURI.Host == "" {
+		return fmt.Errorf("invalid device service URL, endpoint=%s", devServURI.String())
+	}
 
-	defaultGrp := llrp.NewReaderGroup()
-	devService := llrp.NewDSClient(&url.URL{
+	app.defaultGrp = llrp.NewReaderGroup()
+	app.devService = llrp.NewDSClient(&url.URL{
 		Scheme: devServURI.Scheme,
 		Host:   devServURI.Host,
 	}, http.DefaultClient)
 
-	dsName := config.ApplicationSettings.DeviceServiceName
-	lgr.ExitIf(dsName == "", "Missing device service name.")
+	dsName := app.config.ApplicationSettings.DeviceServiceName
+	if dsName == "" {
+		return errors.New("missing device service name")
+	}
 	metadataURI.Path = "/api/v1/device/servicename/" + dsName
 	deviceNames, err := llrp.GetDevices(metadataURI.String(), http.DefaultClient)
-	lgr.ExitIfErr(err, "Failed to get existing device names.", logutil.KeyValue{Key: "path", Val: metadataURI.String()})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get existing device names. path=%s", metadataURI.String())
+	}
 	for _, name := range deviceNames {
-		lgr.ExitIfErr(defaultGrp.AddReader(devService, name),
-			"Failed to setup device.", logutil.KeyValue{Key: "device", Val: name})
+		if err = app.defaultGrp.AddReader(app.devService, name); err != nil {
+			return fmt.Errorf("failed to setup device %s", name)
+		}
 	}
 
-	app := inventoryApp{
-		lgr:          lgr,
-		edgexSdk:     edgexSdk,
-		defaultGrp:   defaultGrp,
-		devService:   devService,
-		snapshotReqs: make(chan snapshotDest),
-		reports:      make(chan reportData),
-	}
+	return app.addRoutes()
+}
 
-	// routes
-	for _, rte := range []struct {
-		path, method string
-		f            http.HandlerFunc // of course the EdgeX SDK doesn't take a http.Handler...
-	}{
-		{"/", http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, "static/html/index.html")
-		}},
-		{"/api/v1/readers", http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			if err := app.defaultGrp.WriteReaders(w); err != nil {
-				msg := fmt.Sprintf("Failed to write readers list: %v", err)
-				lgr.Error(msg)
-				w.WriteHeader(http.StatusInternalServerError)
-				http.Error(w, msg, http.StatusInternalServerError)
-			}
-		}},
-		{"/api/v1/inventory/snapshot", http.MethodGet,
-			func(w http.ResponseWriter, req *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				if err := app.requestInventorySnapshot(w); err != nil {
-					msg := fmt.Sprintf("Failed to write inventory snapshot: %v", err)
-					app.lgr.Error(msg)
-					w.WriteHeader(http.StatusInternalServerError)
-					http.Error(w, msg, http.StatusInternalServerError)
-				}
-			},
-		},
-		{"/api/v1/command/reading/start", http.MethodPost,
-			func(w http.ResponseWriter, req *http.Request) {
-				if err := app.defaultGrp.StartAll(devService); err != nil {
-					msg := fmt.Sprintf("Failed to StartAll: %v", err)
-					lgr.Error(msg)
-					w.WriteHeader(http.StatusInternalServerError)
-					http.Error(w, msg, http.StatusInternalServerError)
-					return
-				}
-			},
-		},
-		{"/api/v1/command/reading/stop", http.MethodPost,
-			func(w http.ResponseWriter, req *http.Request) {
-				if err := app.defaultGrp.StopAll(devService); err != nil {
-					msg := fmt.Sprintf("Failed to StopAll: %v", err)
-					lgr.Error(msg)
-					w.WriteHeader(http.StatusInternalServerError)
-					http.Error(w, msg, http.StatusInternalServerError)
-					return
-				}
-			},
-		},
-		{"/api/v1/behaviors/{name}", http.MethodGet,
-			func(w http.ResponseWriter, req *http.Request) {
-				rv := mux.Vars(req)
-				bName := rv["name"]
-				// Currently, only "default" is supported.
-				if bName != "default" {
-					msg := fmt.Sprintf("Request to GET unknown behavior. Name: %v", bName)
-					lgr.Error(msg)
-					if _, err := w.Write([]byte("Invalid behavior name.")); err != nil {
-						lgr.Error("Error writing failure response.", "error", err)
-					}
-					w.WriteHeader(http.StatusNotFound)
-					http.Error(w, msg, http.StatusNotFound)
-					return
-				}
-
-				data, err := json.Marshal(app.defaultGrp.Behavior())
-				if err != nil {
-					msg := fmt.Sprintf("Failed to marshal behavior: %v", err)
-					lgr.Error(msg)
-					w.WriteHeader(http.StatusInternalServerError)
-					http.Error(w, msg, http.StatusInternalServerError)
-					return
-				}
-
-				if _, err := w.Write(data); err != nil {
-					msg := fmt.Sprintf("Failed to write behavior data: %v", err)
-					lgr.Error(msg)
-					w.WriteHeader(http.StatusInternalServerError)
-					http.Error(w, msg, http.StatusInternalServerError)
-				}
-			},
-		},
-		{"/api/v1/behaviors/{name}", http.MethodPut,
-			func(w http.ResponseWriter, req *http.Request) {
-				rv := mux.Vars(req)
-				bName := rv["name"]
-				// Currently, only "default" is supported.
-				if bName != "default" {
-					msg := fmt.Sprintf("Attempt to PUT unknown behavior. Name %v", bName)
-					lgr.Error(msg)
-					if _, err := w.Write([]byte("Invalid behavior name.")); err != nil {
-						lgr.Error("Error writing failure response.", "error", err)
-					}
-					w.WriteHeader(http.StatusNotFound)
-					http.Error(w, msg, http.StatusNotFound)
-					return
-				}
-
-				data, err := ioutil.ReadAll(io.LimitReader(req.Body, maxBodyBytes))
-				if err != nil {
-					msg := fmt.Sprintf("Failed to read behavior data: %v", err)
-					lgr.Error(msg)
-					w.WriteHeader(http.StatusInternalServerError)
-					http.Error(w, msg, http.StatusInternalServerError)
-					return
-				}
-
-				var b llrp.Behavior
-				if err := json.Unmarshal(data, &b); err != nil {
-					msg := fmt.Sprintf("Failed to unmarshal behavior data: %v. Body: %s", err, string(data))
-					lgr.Error(msg)
-					w.WriteHeader(http.StatusBadRequest)
-					http.Error(w, msg, http.StatusInternalServerError)
-					return
-				}
-
-				if err := app.defaultGrp.SetBehavior(devService, b); err != nil {
-					msg := fmt.Sprintf("Failed to set net behavior: %v", err)
-					lgr.Error(msg)
-					w.WriteHeader(http.StatusBadRequest)
-					if _, err := w.Write([]byte(err.Error())); err != nil {
-						lgr.Error("Error writing failure response.", "error", err)
-					}
-					http.Error(w, msg, http.StatusInternalServerError)
-					return
-				}
-
-				lgr.Info("Updated behavior.", "name", bName)
-			},
-		},
-	} {
-		lgr.ExitIfErr(edgexSdk.AddRoute(rte.path, rte.f, rte.method),
-			"Failed to add route.",
-			logutil.KeyValue{Key: "path", Val: rte.path},
-			logutil.KeyValue{Key: "method", Val: rte.method})
-	}
+func (app *InventoryApp) RunUntilCancelled() error {
 
 	if err := os.MkdirAll(cacheFolder, folderPerm); err != nil {
-		lgr.Error("Failed to create cache directory.", "directory", cacheFolder, "error", err.Error())
+		app.lc.Error("Failed to create cache directory.", "directory", cacheFolder, "error", err.Error())
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -282,8 +162,8 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		app.taskLoop(ctx, cc, config, lgr)
-		lgr.Info("Task loop has exited.")
+		app.taskLoop(ctx, cc, config, app.lc)
+		app.lc.Info("Task loop has exited.")
 	}()
 
 	// We are doing this because of an issue with running app-functions-sdk inside
@@ -300,48 +180,23 @@ func main() {
 		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 		s := <-signals
 
-		lgr.Info(fmt.Sprintf("Received '%s' signal from OS.", s.String()))
+		app.lc.Info(fmt.Sprintf("Received '%s' signal from OS.", s.String()))
 		cancel() // signal the taskLoop to finish
 	}()
 
 	// Subscribe to events.
-	lgr.ExitIfErr(edgexSdk.SetFunctionsPipeline(app.processEdgeXEvent), "Failed to build pipeline.")
-	lgr.ExitIfErr(edgexSdk.MakeItRun(), "Failed to run pipeline.")
+	if err := app.edgexSdk.SetFunctionsPipeline(app.processEdgeXEvent); err != nil {
+		return errors.New("failed to build pipeline")
+	}
+	if err := app.edgexSdk.MakeItRun(); err != nil {
+		return errors.New("failed to run pipeline")
+	}
 
 	// let task loop complete
 	wg.Wait()
-	lgr.Info("Exiting.")
-}
+	app.lc.Info("Exiting.")
 
-// getConfigClient returns a configuration client based on the command line args,
-// or a default one if those lack a config provider URL.
-// Ideally, a future version of the EdgeX SDKs will give us something like this
-// without parsing the args again, but for now, this will do.
-func getConfigClient() (configuration.Client, error) {
-	sdkFlags := flags.New()
-	sdkFlags.Parse(os.Args[1:])
-	cpUrl, err := url.Parse(sdkFlags.ConfigProviderUrl())
-	if err != nil {
-		return nil, err
-	}
-
-	cpPort := 8500
-	port := cpUrl.Port()
-	if port != "" {
-		cpPort, err = strconv.Atoi(port)
-		if err != nil {
-			return nil, errors.Wrap(err, "bad config port")
-		}
-	}
-
-	configClient, err := configuration.NewConfigurationClient(types.ServiceConfig{
-		Host:     cpUrl.Hostname(),
-		Port:     cpPort,
-		BasePath: baseConsulPath,
-		Type:     strings.Split(cpUrl.Scheme, ".")[0],
-	})
-
-	return configClient, errors.Wrap(err, "failed to get config client")
+	return nil
 }
 
 // processEdgeXEvent is used as the sole member of our pipeline.
@@ -352,10 +207,10 @@ func getConfigClient() (configuration.Client, error) {
 // subscribing to EdgeX's event stream and
 // accessing the resources that its agnosticism necessitates
 // may come from any of several sources.
-func (app *inventoryApp) processEdgeXEvent(_ *appcontext.Context, params ...interface{}) (bool, interface{}) {
+func (app *InventoryApp) processEdgeXEvent(_ *appcontext.Context, params ...interface{}) (bool, interface{}) {
 	if len(params) < 1 {
 		err := errors.Errorf("no Event received")
-		app.lgr.Error("Processing error.", "error", err.Error())
+		app.lc.Error("Processing error.", "error", err.Error())
 		return false, err
 	}
 
@@ -378,7 +233,7 @@ func (app *inventoryApp) processEdgeXEvent(_ *appcontext.Context, params ...inte
 		reading := &event.Readings[i] // Readings is 169 bytes. This avoid the copy.
 		switch reading.Name {
 		default:
-			app.lgr.Debug("Unknown reading.", "reading", reading.Name)
+			app.lc.Debug("Unknown reading.", "reading", reading.Name)
 			continue
 
 		case resourceReaderNotification:
@@ -386,12 +241,12 @@ func (app *inventoryApp) processEdgeXEvent(_ *appcontext.Context, params ...inte
 			r.WriteString(reading.Value)
 			notification := &llrp.ReaderEventNotification{}
 			if err := decoder.Decode(notification); err != nil {
-				app.lgr.Error("Failed to decode reader event notification", "error", err.Error())
+				app.lc.Error("Failed to decode reader event notification", "error", err.Error())
 				continue
 			}
 
 			if err := app.handleReaderEvent(event.Device, notification); err != nil {
-				app.lgr.Error("Failed to handle ReaderEventNotification.",
+				app.lc.Error("Failed to handle ReaderEventNotification.",
 					"error", err.Error(), "device", event.Device)
 			}
 
@@ -401,16 +256,16 @@ func (app *inventoryApp) processEdgeXEvent(_ *appcontext.Context, params ...inte
 
 			report := &llrp.ROAccessReport{}
 			if err := decoder.Decode(report); err != nil {
-				app.lgr.Error("Failed to decode tag report",
+				app.lc.Error("Failed to decode tag report",
 					"error", err.Error(), "device", event.Device)
 				continue
 			}
 
 			if report.TagReportData == nil {
-				app.lgr.Warn("No tag report data in report.", "device", event.Device)
+				app.lc.Warn("No tag report data in report.", "device", event.Device)
 			} else {
 				app.reports <- reportData{report, inventory.NewReportInfo(reading)}
-				app.lgr.Trace("New ROAccessReport.",
+				app.lc.Trace("New ROAccessReport.",
 					"device", event.Device, "tags", len(report.TagReportData))
 			}
 		}
@@ -424,7 +279,7 @@ func (app *inventoryApp) processEdgeXEvent(_ *appcontext.Context, params ...inte
 // If a device reports a new connection event,
 // this adds the reader to the list of managed readers.
 // If a device reports a close event, it removes that reader.
-func (app *inventoryApp) handleReaderEvent(device string, notification *llrp.ReaderEventNotification) error {
+func (app *InventoryApp) handleReaderEvent(device string, notification *llrp.ReaderEventNotification) error {
 	const connSuccess = llrp.ConnectionAttemptEvent(llrp.ConnSuccess)
 
 	data := notification.ReaderEventNotificationData
@@ -440,7 +295,7 @@ func (app *inventoryApp) handleReaderEvent(device string, notification *llrp.Rea
 }
 
 // requestInventorySnapshot requests that the current inventory snapshot be written to w.
-func (app *inventoryApp) requestInventorySnapshot(w io.Writer) error {
+func (app *InventoryApp) requestInventorySnapshot(w io.Writer) error {
 	// We send w and a writeErr channel into the inventory execution context
 	// and then wait to read a value from the writeErr channel.
 	//
@@ -463,7 +318,7 @@ func (app *inventoryApp) requestInventorySnapshot(w io.Writer) error {
 // Since nearly every round through this loop must read or write the inventory,
 // this taskLoop ensures the modifications are done safely
 // without requiring a ton of lock contention on the inventory itself.
-func (app *inventoryApp) taskLoop(ctx context.Context, cc configuration.Client, cfg inventory.ConsulConfig, lc logger.LoggingClient) {
+func (app *InventoryApp) taskLoop(ctx context.Context, cc configuration.Client, cfg inventory.ConsulConfig, lc logger.LoggingClient) {
 	departedCheckSeconds := cfg.ApplicationSettings.DepartedCheckIntervalSeconds
 	aggregateDepartedTicker := time.NewTicker(time.Duration(departedCheckSeconds) * time.Second)
 	ageoutTicker := time.NewTicker(1 * time.Hour)
@@ -611,7 +466,7 @@ func persistSnapshot(lc logger.LoggingClient, snapshot []inventory.StaticTag) {
 }
 
 // setDefaultBehavior sets the behavior associated with the default device group.
-func (app *inventoryApp) setDefaultBehavior(b llrp.Behavior) error {
+func (app *InventoryApp) setDefaultBehavior(b llrp.Behavior) error {
 	app.devMu.Lock()
 	err := app.defaultGrp.SetBehavior(app.devService, b)
 	app.devMu.Unlock()
@@ -620,7 +475,7 @@ func (app *inventoryApp) setDefaultBehavior(b llrp.Behavior) error {
 
 // pushEventsToCoreData will send one or more Inventory Events as a single EdgeX Event with
 // an EdgeX Reading for each Inventory Event
-func (app *inventoryApp) pushEventsToCoreData(ctx context.Context, events []inventory.Event) error {
+func (app *InventoryApp) pushEventsToCoreData(ctx context.Context, events []inventory.Event) error {
 	now := time.Now().UnixNano()
 	readings := make([]models.Reading, 0, len(events))
 
