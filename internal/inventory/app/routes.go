@@ -74,6 +74,7 @@ func (app *InventoryApp) getReaders(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, msg, http.StatusInternalServerError)
 	}
 }
+
 func (app *InventoryApp) getSnapshot(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := app.requestInventorySnapshot(w); err != nil {
@@ -83,6 +84,7 @@ func (app *InventoryApp) getSnapshot(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, msg, http.StatusInternalServerError)
 	}
 }
+
 func (app *InventoryApp) startReading(w http.ResponseWriter, _ *http.Request) {
 	if err := app.defaultGrp.StartAll(app.devService); err != nil {
 		msg := fmt.Sprintf("Failed to StartAll: %v", err)
@@ -91,6 +93,7 @@ func (app *InventoryApp) startReading(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, msg, http.StatusInternalServerError)
 	}
 }
+
 func (app *InventoryApp) stopReading(w http.ResponseWriter, _ *http.Request) {
 	if err := app.defaultGrp.StopAll(app.devService); err != nil {
 		msg := fmt.Sprintf("Failed to StopAll: %v", err)
@@ -100,6 +103,7 @@ func (app *InventoryApp) stopReading(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 }
+
 func (app *InventoryApp) getBehavior(w http.ResponseWriter, req *http.Request) {
 	rv := mux.Vars(req)
 	bName := rv["name"]
@@ -131,6 +135,7 @@ func (app *InventoryApp) getBehavior(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, msg, http.StatusInternalServerError)
 	}
 }
+
 func (app *InventoryApp) setBehavior(w http.ResponseWriter, req *http.Request) {
 	rv := mux.Vars(req)
 	bName := rv["name"]
