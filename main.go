@@ -6,7 +6,7 @@
 package main
 
 import (
-	"edgexfoundry-holding/rfid-llrp-inventory-service/internal/inventory/app"
+	inventoryapp "edgexfoundry-holding/rfid-llrp-inventory-service/internal/inventory/app"
 	"fmt"
 	"os"
 )
