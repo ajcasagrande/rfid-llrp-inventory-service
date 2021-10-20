@@ -7,16 +7,20 @@ package llrp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/edgexfoundry/go-mod-core-contracts/clients/logger"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/interfaces"
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/dtos"
+	"github.com/pkg/errors"
 )
 
 // These are the names of deviceResource and deviceCommands
@@ -71,36 +75,13 @@ func NewDSClient(host *url.URL, c *http.Client, lc logger.LoggingClient) DSClien
 }
 
 // GetDevices return a list of device names known to the EdgeX Metadata service.
-func GetDevices(metadataDevicesURL string, client *http.Client) ([]string, error) {
-	req, err := http.NewRequest(http.MethodGet, metadataDevicesURL, nil)
+func GetDevices(client interfaces.DeviceClient, dsName string) ([]dtos.Device, error) {
+	response, err := client.DevicesByServiceName(context.Background(), dsName, 0, -1)
 	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, errors.Errorf("GET returned unexpected status: %d", resp.StatusCode)
+		return nil, errors.Wrap(err, "failed to get device list")
 	}
 
-	respBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	ds := &[]struct{ Name string }{}
-	if err := json.Unmarshal(respBody, ds); err != nil {
-		return nil, errors.Wrap(err, "failed to parse EdgeX device list")
-	}
-
-	deviceList := make([]string, len(*ds))
-	for i, dev := range *ds {
-		deviceList[i] = dev.Name
-	}
-	return deviceList, nil
+	return response.Devices, nil
 }
 
 // NewReader returns a TagReader instance for the given device name

@@ -9,10 +9,10 @@ import (
 	"edgexfoundry/app-rfid-llrp-inventory/internal/llrp"
 	"encoding/hex"
 	"fmt"
-	"github.com/edgexfoundry/go-mod-core-contracts/clients/logger"
-	contract "github.com/edgexfoundry/go-mod-core-contracts/models"
-	"strings"
 	"time"
+
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/clients/logger"
+	"github.com/edgexfoundry/go-mod-core-contracts/v2/models"
 )
 
 type processorConfig struct {
@@ -38,12 +38,12 @@ type TagProcessor struct {
 }
 
 // NewTagProcessor creates a tag processor and pre-loads its mobility profile
-func NewTagProcessor(lc logger.LoggingClient, cfg ConsulConfig, tags []StaticTag) *TagProcessor {
+func NewTagProcessor(lc logger.LoggingClient, cfg ServiceConfig, tags []StaticTag) *TagProcessor {
 	tp := &TagProcessor{
 		lc:        lc,
 		inventory: make(map[string]*Tag),
 	}
-	tp.UpdateConfig(cfg)
+	tp.UpdateConfig(cfg.AppCustom)
 
 	for _, t := range tags {
 		tp.inventory[t.EPC] = t.asTagPtr()
@@ -52,21 +52,23 @@ func NewTagProcessor(lc logger.LoggingClient, cfg ConsulConfig, tags []StaticTag
 	return tp
 }
 
+func (tp *TagProcessor) IsDebugLogging() bool {
+	return tp.lc.LogLevel() == models.DebugLog || tp.lc.LogLevel() == models.TraceLog
+}
+
 // UpdateConfig takes in a ConsulConfig raw config object and converts it into a locally cached
 // version that is understood by the TagProcessor. It also generates the correct mobility profile
 // based on the supplied values, and the alias map as well.
-func (tp *TagProcessor) UpdateConfig(cfg ConsulConfig) {
-	as := cfg.ApplicationSettings
+func (tp *TagProcessor) UpdateConfig(cfg CustomConfig) {
+	as := cfg.AppSettings
 	profile := newMobilityProfile(as.MobilityProfileSlope, as.MobilityProfileThreshold, as.MobilityProfileHoldoffMillis)
 	aliases := cfg.Aliases
 	delete(aliases, "")
 
-	logLevel := strings.ToUpper(cfg.Writable.LogLevel)
 	tp.config = processorConfig{
 		adjustLastReadOnByOrigin: as.AdjustLastReadOnByOrigin,
 		departedThresholdSeconds: as.DepartedThresholdSeconds,
 		ageOutHours:              as.AgeOutHours,
-		debugLogEnabled:          logLevel == contract.DebugLog || logLevel == contract.TraceLog,
 		profile:                  profile,
 		aliases:                  aliases,
 	}
