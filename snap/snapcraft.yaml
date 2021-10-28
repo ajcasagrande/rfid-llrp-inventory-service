@@ -1,6 +1,10 @@
 name: edgex-app-rfid-llrp-inventory
 base: core18
 adopt-info: app-rfid-llrp-inventory
+<<<<<<< HEAD
+=======
+version: "replace-me"
+>>>>>>> 17d8d14 (feat: Update snap for Jakarta)
 license: Apache-2.0
 title: EdgeX RFID LLRP Inventory
 summary: EdgeX Application Service for inventory management

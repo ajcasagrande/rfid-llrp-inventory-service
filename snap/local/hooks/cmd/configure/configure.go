@@ -65,8 +65,8 @@ func main() {
 		debug = true
 	}
 
-	if err = hooks.Init(debug, "edgex-app-service-configurable"); err != nil {
-		fmt.Println(fmt.Sprintf("edgex-asc:configure: initialization failure: %v", err))
+	if err = hooks.Init(debug, "app-rfid-llrp-inventory"); err != nil {
+		fmt.Println(fmt.Sprintf("edgex-app-rfid-llrp-inventory:configure: initialization failure: %v", err))
 		os.Exit(1)
 
 	}
@@ -104,7 +104,7 @@ func main() {
 		os.Exit(1)
 	}
 	if autostart == "" {
-		hooks.Debug("edgex-asc: autostart is NOT set, initializing to 'no'")
+		hooks.Debug("edgex-app-rfid-llrp-inventory: autostart is NOT set, initializing to 'no'")
 		autostart = "no"
 	}
 
@@ -124,7 +124,7 @@ func main() {
 	// service is stopped/disabled by default in the install hook
 	// only enable if profile exists and autstart is set
 	if enable {
-		err = cli.Start("app-service-configurable", true)
+		err = cli.Start("app-rfid-llrp-inventory", true)
 		if err != nil {
 			hooks.Error(fmt.Sprintf("Can't start service - %v", err))
 			os.Exit(1)
