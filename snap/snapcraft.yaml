@@ -49,6 +49,14 @@ parts:
     stage-packages: [libzmq5]
     override-build: |
       cd $SNAPCRAFT_PART_SRC
+
+      if git describe ; then
+        VERSION=$(git describe --tags --abbrev=0 | sed 's/v//')
+        snapcraftctl set-version ${VERSION}
+        # This is used in the Makefile:
+        echo $VERSION > ./VERSION
+      fi
+
       make build
 
       install -DT "./app-rfid-llrp-inventory" "$SNAPCRAFT_PART_INSTALL/bin/app-rfid-llrp-inventory"
