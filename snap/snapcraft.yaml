@@ -35,6 +35,7 @@ apps:
       CONFIG_PRO_ARG: "-cp=consul.http://localhost:8500"
       CONF_ARG: "--confdir=$SNAP_DATA/config/app-rfid-llrp-inventory/res"
       REGISTRY_ARG: "--registry"
+      SECRETSTORE_TOKENFILE: $SNAP_DATA/app-rfid-llrp-inventory/secrets-token.json
     passthrough:
       install-mode: disable
     plugs: [network, network-bind]
