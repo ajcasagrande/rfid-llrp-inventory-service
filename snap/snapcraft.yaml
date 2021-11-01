@@ -1,7 +1,6 @@
 name: edgex-app-rfid-llrp-inventory
 base: core18
 adopt-info: app-rfid-llrp-inventory
-version: "replace-me"
 license: Apache-2.0
 title: EdgeX RFID LLRP Inventory
 summary: EdgeX Application Service for inventory management
@@ -36,7 +35,12 @@ apps:
       CONFIG_PRO_ARG: "-cp=consul.http://localhost:8500"
       CONF_ARG: "--confdir=$SNAP_DATA/config/app-rfid-llrp-inventory/res"
       REGISTRY_ARG: "--registry"
-      SECRETSTORE_TOKENFILE:  /tmp/app-rfid-llrp-inventory/secrets-token.json
+
+      SECRETSTORE_TOKENFILE:  $SNAP_DATA/app-rfid-llrp-inventory/secrets-token.json
+    passthrough:
+      install-mode: disable
+    plugs: [network, network-bind]
+
 
 parts:
   app-rfid-llrp-inventory:
@@ -48,6 +52,14 @@ parts:
     stage-packages: [libzmq5]
     override-build: |
       cd $SNAPCRAFT_PART_SRC
+
+      if git describe ; then
+        VERSION=$(git describe --tags --abbrev=0 | sed 's/v//')
+        snapcraftctl set-version ${VERSION}
+        # This is used in the Makefile:
+        echo $VERSION > ./VERSION
+      fi
+
       make build
 
       install -DT "./app-rfid-llrp-inventory" "$SNAPCRAFT_PART_INSTALL/bin/app-rfid-llrp-inventory"
