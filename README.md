@@ -35,7 +35,7 @@ Here are some example `EdgeX Events` with accompanying `EdgeX Readings`.
       "deviceName": "rfid-llrp-inventory",
       "resourceName": "InventoryEventArrived",
       "profileName": "rfid-llrp-inventory",
-      "ValueType": "String",
+      "valueType": "String",
       "value": "{\"epc\":\"30340bb6884cb101a13bc744\",\"tid\":\"\",\"timestamp\":1598043284104,\"location\":\"SpeedwayR-10-EF-25_1\"}"
     }
   ]
@@ -59,7 +59,7 @@ Here are some example `EdgeX Events` with accompanying `EdgeX Readings`.
       "deviceName": "rfid-llrp-inventory",
       "resourceName": "InventoryEventMoved",
       "profileName": "rfid-llrp-inventory",
-      "ValueType": "String",
+      "valueType": "String",
       "value": "{\"epc\":\"30340bb6884cb101a13bc744\",\"tid\":\"\",\"timestamp\":1598401259691,\"old_location\":\"Freezer\",\"new_location\":\"Kitchen\"}"
     }
   ]
@@ -83,7 +83,7 @@ Here are some example `EdgeX Events` with accompanying `EdgeX Readings`.
       "deviceName": "rfid-llrp-inventory",
       "resourceName": "InventoryEventDeparted",
       "profileName": "rfid-llrp-inventory",
-      "ValueType": "String",
+      "valueType": "String",
       "value": "{\"epc\":\"30340bb6884cb101a13bc744\",\"tid\":\"\",\"timestamp\":1598062424893,\"last_read\":1598062392524,\"last_known_location\":\"SpeedwayR-10-EF-25_1\"}"
     },
     {
@@ -93,7 +93,7 @@ Here are some example `EdgeX Events` with accompanying `EdgeX Readings`.
       "deviceName": "rfid-llrp-inventory",
       "resourceName": "InventoryEventDeparted",
       "profileName": "rfid-llrp-inventory",
-      "ValueType": "String",
+      "valueType": "String",
       "value": "{\"epc\":\"30340bb6884cb101a13bc688\",\"tid\":\"\",\"timestamp\":1598062424893,\"last_read\":1598062392512,\"last_known_location\":\"POS Terminals\"}"
     }
   ]
