@@ -87,9 +87,6 @@ Type="edgex-messagebus"
   # Reader-10-EF-25_1 = "Freezer"
   # Reader-10-EF-25_2 = "Backroom"
   [AppCustom.Aliases]
-  Reader-10-EF-25_1 = "Freezer"
-  Reader-10-EF-25_2 = "Backroom"
-  Reader-3 = "my truck"
 
   # See: https://github.com/edgexfoundry/app-rfid-llrp-inventory#configuration
   [AppCustom.AppSettings]
