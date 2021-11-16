@@ -61,6 +61,7 @@ func NewInventoryApp() *InventoryApp {
 	return &InventoryApp{
 		snapshotReqs: make(chan snapshotDest),
 		reports:      make(chan reportData),
+		confUpdateCh: make(chan interface{}),
 	}
 }
 
@@ -79,9 +80,6 @@ func (app *InventoryApp) Initialize() error {
 
 	app.lc.Info("Starting.")
 
-	app.confUpdateCh = make(chan interface{})
-
-	app.config = inventory.ServiceConfig{}
 	if err = app.service.LoadCustomConfig(&app.config, aliasesConfigKey); err != nil {
 		return errors.Wrap(err, "Failed to load custom configuration")
 	}

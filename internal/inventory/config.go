@@ -38,11 +38,11 @@ type ServiceConfig struct {
 }
 
 // UpdateFromRaw updates the service's full configuration from raw data received from
-// the Service Provider.
+// the Service Provider.This function implements the UpdatableConfig interface for ServiceConfig.
 func (c *ServiceConfig) UpdateFromRaw(rawConfig interface{}) bool {
 	configuration, ok := rawConfig.(*ServiceConfig)
 	if !ok {
-		return false //errors.New("unable to cast raw config to type 'ServiceConfig'")
+		return false
 	}
 
 	*c = *configuration
@@ -51,17 +51,12 @@ func (c *ServiceConfig) UpdateFromRaw(rawConfig interface{}) bool {
 }
 
 var (
-	// ErrUnexpectedConfigItems is returned when the input configuration map has extra keys
-	// and values that are left over after parsing is complete
-	ErrUnexpectedConfigItems = errors.New("unexpected config items")
-	// ErrMissingRequiredKey is returned when we are unable to parse the value for a config key
-	ErrMissingRequiredKey = errors.New("missing required key")
 	// ErrOutOfRange is returned if a config value is syntactically valid for its type,
 	// but otherwise outside of the acceptable range of valid values.
 	ErrOutOfRange = errors.New("config value out of range")
 )
 
-// NeServiceConfig returns a new ServiceConfig instance with default values.
+// NewServiceConfig returns a new ServiceConfig instance with default values.
 func NewServiceConfig() ServiceConfig {
 	return ServiceConfig{
 		AppCustom: CustomConfig{

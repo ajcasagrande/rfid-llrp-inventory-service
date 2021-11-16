@@ -26,9 +26,6 @@ import (
 )
 
 const (
-	eventDeviceName            = "rfid-llrp-inventory"
-	eventProfileName           = "rfid-llrp-inventory"
-	eventSourceName            = "rfid-llrp-inventory"
 	resourceROAccessReport     = "ROAccessReport"
 	resourceReaderNotification = "ReaderEventNotification"
 	resourceInventoryEvent     = "InventoryEvent"
@@ -310,8 +307,8 @@ func (app *InventoryApp) setDefaultBehavior(b llrp.Behavior) error {
 // pushEventsToCoreData will send one or more Inventory Events as a single EdgeX Event with
 // an EdgeX Reading for each Inventory Event
 func (app *InventoryApp) pushEventsToCoreData(ctx context.Context, events []inventory.Event) error {
-
-	edgeXEvent := dtos.NewEvent(eventProfileName, eventDeviceName, eventSourceName)
+	// New event needs profile, device and source names that typically from a device profile, but sinces we dont have one will use service key for all three names
+	edgeXEvent := dtos.NewEvent(serviceKey, serviceKey, serviceKey)
 
 	var errs []error
 	for _, event := range events {

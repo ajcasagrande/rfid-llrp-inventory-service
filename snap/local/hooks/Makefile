@@ -1,16 +1,15 @@
 GO=go
 HOOKS=cmd/configure/configure cmd/install/install
 
-tidy:
-	go mod tidy
+.PHONY: tidy build test clean
 
 build: tidy $(HOOKS)
 
-cmd/configure/configure:
-	$(GO) build -o $@ ./cmd/configure
+tidy:
+	go mod tidy
 
-cmd/install/install:
-	$(GO) build -o $@ ./cmd/install
+$(HOOKS):
+	$(GO) build -o $@ ./$(dir $@)
 
 # TODO: fixup unit testing
 test:
@@ -21,4 +20,3 @@ test:
 
 clean:
 	rm -f $(HOOKS)
-

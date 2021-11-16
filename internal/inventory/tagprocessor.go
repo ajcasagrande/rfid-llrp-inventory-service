@@ -22,12 +22,6 @@ type processorConfig struct {
 	departedThresholdSeconds uint
 	ageOutHours              uint
 	adjustLastReadOnByOrigin bool
-
-	// debugLogEnabled is used to be able to only log things when Debug logging is enabled
-	// note: this should be something that is able to be determined via the logger.LoggingClient,
-	// however currently EdgeX does not support querying the log level
-	// see: https://github.com/edgexfoundry/go-mod-core-contracts/issues/294
-	debugLogEnabled bool
 }
 
 // TagProcessor holds the current inventory data and processes incoming tag read data
@@ -52,7 +46,7 @@ func NewTagProcessor(lc logger.LoggingClient, cfg ServiceConfig, tags []StaticTa
 	return tp
 }
 
-func (tp *TagProcessor) IsDebugLogging() bool {
+func (tp *TagProcessor) isDebugLogging() bool {
 	return tp.lc.LogLevel() == models.DebugLog || tp.lc.LogLevel() == models.TraceLog
 }
 
@@ -256,7 +250,7 @@ func (tp *TagProcessor) processData(rt *llrp.TagReportData, info ReportInfo) (ev
 
 	// if the incoming read's location has at least 2 data points, lets see if the tag should move
 	if statsAtReadLoc.rssiCount() >= 2 {
-		if tp.config.debugLogEnabled {
+		if tp.isDebugLogging() {
 			logReadTiming(tp, info, statsAtPrevLoc, tag)
 		}
 
@@ -264,7 +258,7 @@ func (tp *TagProcessor) processData(rt *llrp.TagReportData, info ReportInfo) (ev
 		incomingMean := statsAtReadLoc.rssiDbm.Mean()
 
 		offset := tp.config.profile.computeOffset(info.referenceTimestamp, statsAtPrevLoc.lastRead)
-		if tp.config.debugLogEnabled {
+		if tp.isDebugLogging() {
 			logTagStats(tp, tag, readLocation.String(), incomingMean, locationMean, offset)
 		}
 
