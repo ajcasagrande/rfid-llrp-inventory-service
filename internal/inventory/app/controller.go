@@ -48,7 +48,7 @@ func (app *InventoryApp) processEdgeXEvent(_ interfaces.AppFunctionContext, data
 
 	event, ok := data.(dtos.Event)
 	if !ok {
-		return false, errors.New("processEdgeXEvent: didn't receive expect Event type")
+		return false, errors.New("processEdgeXEvent: didn't receive expected Event type")
 	}
 
 	if len(event.Readings) < 1 {
