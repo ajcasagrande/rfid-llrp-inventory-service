@@ -27,11 +27,8 @@ import (
 	hooks "github.com/canonical/edgex-snap-hooks/v2"
 )
 
-var cli *hooks.CtlCli = hooks.NewSnapCtl()
-
 // validateProfile processes the snap 'profile' configure option, ensuring that the directory
 // and associated configuration.toml file in $SNAP_DATA both exist.
-//
 func validateProfile(prof string) error {
 	hooks.Debug(fmt.Sprintf("edgex-asc:configure:validateProfile: profile is %s", prof))
 
@@ -55,6 +52,7 @@ func main() {
 	var enable = true
 	var err error
 	var envJSON, prof string
+	var cli *hooks.CtlCli = hooks.NewSnapCtl() //check with lenny
 
 	status, err := cli.Config("debug")
 	if err != nil {
@@ -77,7 +75,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	validateProfile(prof)
+	err = validateProfile(prof)
 	if err != nil {
 		hooks.Error(fmt.Sprintf("Error validating profile: %v", err))
 		os.Exit(1)
@@ -122,7 +120,7 @@ func main() {
 	}
 
 	// service is stopped/disabled by default in the install hook
-	// only enable if profile exists and autstart is set
+	// only enable if profile exists and autostart is set
 	if enable {
 		err = cli.Start("app-rfid-llrp-inventory", true)
 		if err != nil {
