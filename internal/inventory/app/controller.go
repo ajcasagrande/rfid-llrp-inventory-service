@@ -41,7 +41,7 @@ const (
 // handles events such as readers being connected and disconnected. The second event type is
 // ROAccessReport which is a wrapper around rfid tag read events. These tag readings are sent to
 // a channel which processes them as part of the main taskLoop.
-func (app *InventoryApp) processEdgeXEvent(ctx interfaces.AppFunctionContext, data interface{}) (bool, interface{}) {
+func (app *InventoryApp) processEdgeXEvent(_ interfaces.AppFunctionContext, data interface{}) (bool, interface{}) {
 	if data == nil {
 		return false, errors.New("processEdgeXEvent: No data received")
 	}
