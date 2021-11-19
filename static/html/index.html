@@ -1,5 +1,5 @@
 <!--
-// Copyright (c) 2020 Intel Corporation
+// Copyright (c) 2020, 2021 Intel Corporation
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,9 +22,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
   <!-- Bootstrap CSS -->
-  <!-- TODO: Add to IP Plan -->
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
-  <!-- todo: may have to remove theme (or this page altogether) before release -->
   <link rel="stylesheet" href="https://bootswatch.com/4/darkly/bootstrap.min.css">
 
   <style>
@@ -41,73 +39,73 @@
   </style>
 
   <script>
-      function log(str, alternate) {
-          console.log(alternate !== undefined ? alternate : str);
-          document.getElementById("output_log").innerHTML += "<pre>" + str + "</pre>";
-      }
+    function log(str, alternate) {
+      console.log(alternate !== undefined ? alternate : str);
+      document.getElementById("output_log").innerHTML += "<pre>" + str + "</pre>";
+    }
 
-      function clear_log() {
-          document.getElementById("output_log").innerHTML = "";
-      }
+    function clear_log() {
+      document.getElementById("output_log").innerHTML = "";
+    }
 
-      function call(method, url, data) {
-          clear_log();
+    function call(method, url, data) {
+      clear_log();
 
-          let xhr = new XMLHttpRequest();
-          log(method + ' ' + url);
-          xhr.open(method, url);
+      let xhr = new XMLHttpRequest();
+      log(method + ' ' + url);
+      xhr.open(method, url);
 
-          xhr.onload = function() {
-              if (xhr.status === 200) {
-                  if (xhr.getResponseHeader("Content-Type") === "application/json") {
-                      let obj = JSON.parse(xhr.responseText);
-                      log(JSON.stringify(obj, null, 2), obj);
-                  } else {
-                      log('200 OK: ' + xhr.responseText);
-                  }
-              } else {
-                  log('Request failed.  Returned status of ' + xhr.status);
-              }
-          };
-
-            xhr.send(data);
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          if (xhr.getResponseHeader("Content-Type") === "application/json") {
+            let obj = JSON.parse(xhr.responseText);
+            log(JSON.stringify(obj, null, 2), obj);
+          } else {
+            log('200 OK: ' + xhr.responseText);
+          }
+        } else {
+          log('Request failed.  Returned status of ' + xhr.status);
         }
+      };
 
-        function setBehavior(behavior) {
-          call('PUT', 'api/v1/behaviors/default', JSON.stringify(behavior));
-          log(JSON.stringify(behavior, null, 2), behavior);
+      xhr.send(data);
+    }
+
+    function setBehavior(behavior) {
+      call('PUT', 'api/v2/behaviors/default', JSON.stringify(behavior));
+      log(JSON.stringify(behavior, null, 2), behavior);
+    }
+
+    function setNormalScan() {
+      setBehavior({
+        scanType: "Normal",
+        impinjOptions: {
+          SuppressMonza: true
+        },
+        power: {
+          max: 3000,
         }
+      });
+    }
 
-      function setNormalScan() {
-        setBehavior({
-          scanType: "Normal",
-          impinjOptions: {
-            SuppressMonza: true
-          },
-          power: {
-            max: 3000,
-          }
-        });
-      }
+    function setFastScan() {
+      setBehavior({
+        scanType: "Fast",
+        power: {
+          max: 3000,
+        }
+      });
+    }
 
-      function setFastScan() {
-        setBehavior({
-          scanType: "Fast",
-          power: {
-            max: 3000,
-          }
-        });
-      }
-
-      function setDeepScan() {
-        setBehavior({
-          scanType: "Deep",
-          power: {
-              max: 3000,
-          }
-        });
-      }
-    </script>
+    function setDeepScan() {
+      setBehavior({
+        scanType: "Deep",
+        power: {
+          max: 3000,
+        }
+      });
+    }
+  </script>
 
   <title>RFID Inventory Service - Developer Console</title>
 </head>
@@ -118,16 +116,16 @@
 </nav>
 
 <div id="content" style="height: 100%">
-  <div class="b"><button type="button" class="btn btn-primary" onclick="call('POST', 'http://localhost:49989/api/v1/discovery')">Discover Readers</button></div>
-  <div class="b"><button type="button" class="btn btn-primary" onclick="call('GET', '/api/v1/readers')">List Readers</button></div>
-  <div class="b"><button type="button" class="btn btn-primary" onclick="call('GET', '/api/v1/behaviors/default')">Show Default Behavior</button></div>
+  <div class="b"><button type="button" class="btn btn-primary" onclick="call('POST', 'http://localhost:59989/api/v2/discovery')">Discover Readers</button></div>
+  <div class="b"><button type="button" class="btn btn-primary" onclick="call('GET', '/api/v2/readers')">List Readers</button></div>
+  <div class="b"><button type="button" class="btn btn-primary" onclick="call('GET', '/api/v2/behaviors/default')">Show Default Behavior</button></div>
   <div class="b"><button type="button" class="btn btn-primary" onclick="setDeepScan()">Set Deep Scan Behavior</button></div>
   <div class="b"><button type="button" class="btn btn-primary" onclick="setNormalScan()">Set Normal Scan Behavior</button></div>
   <div class="b"><button type="button" class="btn btn-primary" onclick="setFastScan()">Set Fast Scan Behavior</button></div>
-  <div class="b"><button type="button" class="btn btn-success" onclick="call('POST', '/api/v1/command/reading/start')">Start Reading</button></div>
-  <div class="b"><button type="button" class="btn btn-danger" onclick="call('POST', '/api/v1/command/reading/stop')">Stop Reading</button></div>
-  <div class="b"><button type="button" class="btn btn-light" onclick="call('GET', '/api/v1/inventory/snapshot')">Inventory Snapshot</button></div>
-  <div class="b"><a href="http://localhost:48080/api/v1/event/device/rfid-llrp-inventory/100" target="_blank"><button type="button" class="btn btn-light">EdgeX Inventory Events</button></a></div>
+  <div class="b"><button type="button" class="btn btn-success" onclick="call('POST', '/api/v2/command/reading/start')">Start Reading</button></div>
+  <div class="b"><button type="button" class="btn btn-danger" onclick="call('POST', '/api/v2/command/reading/stop')">Stop Reading</button></div>
+  <div class="b"><button type="button" class="btn btn-light" onclick="call('GET', '/api/v2/inventory/snapshot')">Inventory Snapshot</button></div>
+  <div class="b"><a href="http://localhost:59880/api/v2/event/device/name/app-rfid-llrp-inventory" target="_blank"><button type="button" class="btn btn-light">EdgeX Inventory Events</button></a></div>
 
   <div id="output_log">
   </div>
